@@ -1,0 +1,121 @@
+name: Build
+
+on:
+  issues:
+    types: [ opened,labeled ]
+
+# permissions of github action bot
+permissions:
+  issues: write
+
+jobs:
+  build:
+    if: ${{ github.event.label.name == 'build' }}
+    runs-on: ubuntu-latest
+    steps:
+      # clone main program
+      - name: clone website-to-android
+        uses: actions/checkout@v3
+        with:
+          repository: SuCicada/website-to-android
+
+
+      - name: set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 8
+          cache: 'gradle'
+
+      - name: Build with Gradle
+        run: |
+          echo "${{ github.event.issue.body }}" > config.properties
+          cat config.properties
+          chmod +x gradlew &&./gradlew assembleRelease
+
+      - name: Get current time
+        uses: josStorer/get-current-time@v2
+        id: current-time
+        with:
+          format: YYYYMMDD-HHmm
+
+      - name: Get APP Name
+        id: get-app-name
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          USER: ${{ github.event.issue.sender.login }}
+          F_TIME: ${{ steps.current-time.outputs.formattedTime }}
+        run: |
+          app_name="${USER}-${TITLE}-${F_TIME}.apk"
+          echo "::set-output name=app_name::$app_name"
+
+      - name: Get upload URL
+        id: geturl
+        run: |
+          upload_url=$(curl -sL https://api.github.com/repos/${{github.repository}}/releases/latest | jq -r '.upload_url')
+          echo ::set-output name=upload_url::$upload_url
+
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.geturl.outputs.upload_url }}
+          asset_path: ./app/build/outputs/apk/release/app-release.apk
+          asset_name: ${{ steps.get_app_name.outputs.app_name }}
+          asset_content_type: application/zip
+
+
+#      - name: Create comment on success
+#        if: success()
+#        uses: peter-evans/create-or-update-comment@v2
+#        env:
+#          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
+#          APP_URL: ${{ steps.upload-release-asset.outputs.browser_download_url }}
+#        with:
+#          issue-number: ${{ github.event.issue.number }}
+#          body: |
+#            Build APK Success: ${{env.APP_NAME}}
+#            Download: ${{env.APP_URL}}
+#          reactions: '+1'
+#
+#      - name: Create comment on failure
+#        if: failure()
+#        uses: peter-evans/create-or-update-comment@v2
+#        env:
+#          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
+#        with:
+#          issue-number: ${{ github.event.issue.number }}
+#          body: |
+#            Build APK Failure: ${{env.APP_NAME}}
+#          reactions: '-1'
+
+
+#      - name: send telegram message on success
+#        if: success()
+#        uses: appleboy/telegram-action@master
+#        with:
+#          to: ${{ secrets.TELEGRAM_TO }}
+#          token: ${{ secrets.TELEGRAM_TOKEN }}
+#          format: markdown
+#          disable_web_page_preview: true
+#          message: |
+#            *[Build SUCCESS]* ${{ github.repository }}
+#
+#            Commit message: ${{ github.event.commits[0].message }}
+#
+#            [See Changes](https://github.com/${{ github.repository }}/commit/${{github.sha}})
+#
+#      - name: send telegram message on failure
+#        if: failure()
+#        uses: appleboy/telegram-action@master
+#        with:
+#          to: ${{ secrets.TELEGRAM_TO }}
+#          token: ${{ secrets.TELEGRAM_TOKEN }}
+#          format: markdown
+#          disable_web_page_preview: true
+#          message: |
+#            *[Build FAILURE]* ${{ github.repository }}
+#
+#            [See
