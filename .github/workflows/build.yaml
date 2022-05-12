@@ -18,8 +18,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: SuCicada/website-to-android
-
-
+      # =============  build ===================================
       - name: set up JDK 8
         uses: actions/setup-java@v3
         with:
@@ -33,6 +32,8 @@ jobs:
           cat config.properties
           chmod +x gradlew &&./gradlew assembleRelease
 
+      # =============  upload ===================================
+
       - name: Get current time
         uses: josStorer/get-current-time@v2
         id: current-time
@@ -40,7 +41,7 @@ jobs:
           format: YYYYMMDD-HHmm
 
       - name: Get APP Name
-        id: get-app-name
+        id: get_app_name
         env:
           TITLE: ${{ github.event.issue.title }}
           USER: ${{ github.event.issue.sender.login }}
@@ -66,30 +67,31 @@ jobs:
           asset_name: ${{ steps.get_app_name.outputs.app_name }}
           asset_content_type: application/zip
 
+      # =============  comment ===================================
 
-#      - name: Create comment on success
-#        if: success()
-#        uses: peter-evans/create-or-update-comment@v2
-#        env:
-#          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
-#          APP_URL: ${{ steps.upload-release-asset.outputs.browser_download_url }}
-#        with:
-#          issue-number: ${{ github.event.issue.number }}
-#          body: |
-#            Build APK Success: ${{env.APP_NAME}}
-#            Download: ${{env.APP_URL}}
-#          reactions: '+1'
-#
-#      - name: Create comment on failure
-#        if: failure()
-#        uses: peter-evans/create-or-update-comment@v2
-#        env:
-#          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
-#        with:
-#          issue-number: ${{ github.event.issue.number }}
-#          body: |
-#            Build APK Failure: ${{env.APP_NAME}}
-#          reactions: '-1'
+      - name: Create comment on success
+        if: success()
+        uses: peter-evans/create-or-update-comment@v2
+        env:
+          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
+          APP_URL: ${{ steps.upload-release-asset.outputs.browser_download_url }}
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Build APK Success: ${{env.APP_NAME}}
+            Download: ${{env.APP_URL}}
+          reactions: '+1'
+
+      - name: Create comment on failure
+        if: failure()
+        uses: peter-evans/create-or-update-comment@v2
+        env:
+          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Build APK Failure: ${{env.APP_NAME}}
+          reactions: '-1'
 
 
 #      - name: send telegram message on success
