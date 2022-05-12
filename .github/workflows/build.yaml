@@ -5,21 +5,27 @@ on:
     types: [ opened,labeled ]
 
 # permissions of github action bot
-permissions:
-  issues: write
+permissions: write-all
+#  issues: write
 
 jobs:
   build:
     if: ${{ github.event.label.name == 'build' }}
     runs-on: ubuntu-latest
     steps:
-      # clone main program
+      - name: add label named running
+        uses: andymckay/labeler@master
+        with:
+          add-labels: "running"
+
       - name: clone website-to-android
         uses: actions/checkout@v3
         with:
           repository: SuCicada/website-to-android
+
       # =============  build ===================================
       - name: set up JDK 8
+        if: ${{ !env.DEBUG }}
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
@@ -27,10 +33,18 @@ jobs:
           cache: 'gradle'
 
       - name: Build with Gradle
+        if: ${{ !env.DEBUG }}
         run: |
           echo "${{ github.event.issue.body }}" > config.properties
           cat config.properties
           chmod +x gradlew &&./gradlew assembleRelease
+
+      - name: DEBUG make file
+        if: ${{ env.DEBUG }}
+        run: |
+          apk=./app/build/outputs/apk/release/app-release.apk
+          mkdir -p $(dirname $apk)
+          touch nihao > $apk
 
       # =============  upload ===================================
 
@@ -44,11 +58,11 @@ jobs:
         id: get_app_name
         env:
           TITLE: ${{ github.event.issue.title }}
-          USER: ${{ github.event.issue.sender.login }}
+          USER: ${{ github.actor }}
           F_TIME: ${{ steps.current-time.outputs.formattedTime }}
         run: |
           app_name="${USER}-${TITLE}-${F_TIME}.apk"
-          echo "::set-output name=app_name::$app_name"
+          echo ::set-output name=app_name::$app_name
 
       - name: Get upload URL
         id: geturl
@@ -77,47 +91,66 @@ jobs:
           APP_URL: ${{ steps.upload-release-asset.outputs.browser_download_url }}
         with:
           issue-number: ${{ github.event.issue.number }}
+          state: close
           body: |
-            Build APK Success: ${{env.APP_NAME}}
+            @${{ github.actor }}
+            Build APK Success: **${{env.APP_NAME}}**
             Download: ${{env.APP_URL}}
           reactions: '+1'
+      - name: add label on success
+        if: success()
+        uses: andymckay/labeler@master
+        with:
+          add-labels: "success"
+          remove-labels: "running"
 
       - name: Create comment on failure
         if: failure()
         uses: peter-evans/create-or-update-comment@v2
-        env:
-          APP_NAME: ${{ steps.get_app_name.outputs.app_name }}
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            Build APK Failure: ${{env.APP_NAME}}
+            @${{ github.actor }}
+            Build APK Failure: **${{ steps.get_app_name.outputs.app_name }}**
+            log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           reactions: '-1'
+      - name: add label on failure
+        if: failure()
+        uses: andymckay/labeler@master
+        with:
+          add-labels: "failure"
+          remove-labels: "running"
 
+      - name: Close Issue
+        if: always()
+        uses: peter-evans/close-issue@v2
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          comment: Auto-closing issue
 
-#      - name: send telegram message on success
-#        if: success()
-#        uses: appleboy/telegram-action@master
-#        with:
-#          to: ${{ secrets.TELEGRAM_TO }}
-#          token: ${{ secrets.TELEGRAM_TOKEN }}
-#          format: markdown
-#          disable_web_page_preview: true
-#          message: |
-#            *[Build SUCCESS]* ${{ github.repository }}
-#
-#            Commit message: ${{ github.event.commits[0].message }}
-#
-#            [See Changes](https://github.com/${{ github.repository }}/commit/${{github.sha}})
-#
-#      - name: send telegram message on failure
-#        if: failure()
-#        uses: appleboy/telegram-action@master
-#        with:
-#          to: ${{ secrets.TELEGRAM_TO }}
-#          token: ${{ secrets.TELEGRAM_TOKEN }}
-#          format: markdown
-#          disable_web_page_preview: true
-#          message: |
-#            *[Build FAILURE]* ${{ github.repository }}
-#
-#            [See
+      - name: send telegram message on success
+        if: success()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_web_page_preview: true
+          message: |
+            *[Build SUCCESS]* ${{ github.repository }}
+            APK: ${{ steps.get_app_name.outputs.app_name }}
+            [See Issue](https://github.com/${{github.repository}}/issues/${{github.event.issue.number}}
+
+      - name: send telegram message on failure
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_web_page_preview: true
+          message: |
+            *[Build FAILURE]* ${{ github.repository }}
+            APK: ${{ steps.get_app_name.outputs.app_name }}
+            [See Issue](https://github.com/${{github.repository}}/issues/${{github.event.issue.number}}
+            [See Error Log](https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}
